@@ -41,7 +41,6 @@ To ensure correct operation, the input data file must fulfill thefollowing requi
           
           
 An exemplary dataset (dataset.csv) is provided. This dataset was derived from open source data in the NormalizeMets R package.
-
-For further description see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
+For further description of this dataset see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
           
 
