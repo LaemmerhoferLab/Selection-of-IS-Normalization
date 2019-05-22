@@ -1,14 +1,14 @@
 # Selection-of-Internal-Standard-based-Normalization-for-MS-Data
 This code performs various internal standard-based normalization methods (B-MIS, CCMN, NOMIS, RUVrandom) on MS-datasets and extracts statistical parameters and metrics of intra-group variance for comparison. Ultimately, the aim is to provide a valid and simplified tool for selection of the optimum normalization strategy.
 
-#This script was created using RStudio (Version 1.1.383)
+This script was created using RStudio (Version 1.1.383)
 
-#Title: "Selection of Internal Standard based Normalization"
+Title: "Selection of Internal Standard based Normalization"
 Author: "B. Drotleff et al."
 Date: "May 22th, 2019"
 
 
-#Following R packages are required to run the script:
+Following R packages are required to run the script:
 MetNorm
 NormalizeMets
 metabolomics
@@ -20,7 +20,7 @@ ropls
 tibble
 
 
-#To ensure correct operation, the input data file must fulfill thefollowing requirements:
+To ensure correct operation, the input data file must fulfill thefollowing requirements:
   - The R-project file must be in the same folder as the input data file
   - The input data file must be named "dataset.csv" with the file type .csv
   - Columns must have headers --> column 1: "Samples", column 2: "Class"
@@ -40,7 +40,7 @@ tibble
           k=3
           
           
-#An exemplary dataset (dataset.csv) is provided. This dataset was derived from open source data provided in the NormalizeMets R package.
-#For further description see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
+An exemplary dataset (dataset.csv) is provided. This dataset was derived from open source data provided in the NormalizeMets R package.
+For further description see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
           
 
