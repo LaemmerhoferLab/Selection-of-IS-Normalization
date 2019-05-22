@@ -1,0 +1,839 @@
+#Script was created using RStudio (Version 1.1.383)
+
+#Title: "Selection of Internal Standard based Normalization"
+#Author: "B. Drotleff et al."
+#Date: "May 22th, 2019"
+
+
+#load required packages
+suppressMessages(library(MetNorm))
+suppressMessages(library(NormalizeMets))
+suppressMessages(library(metabolomics))
+suppressMessages(library(qvalue))
+suppressMessages(library(ggplot2))
+suppressMessages(library(sgof))
+suppressMessages(library(caTools))
+suppressMessages(library(ropls))
+suppressMessages(library(tibble))
+
+
+
+#R-project file must be in the same folder as the dataset csv file. Check by typing
+getwd()
+
+
+#To ensure correct operation, the input data file must fulfill thefollowing requirements:
+	#The R-project file must be in the same folder as the input data file
+	#Columns must have headers --> column 1: "Samples", column 2: "Class"
+	#Rows in column 1 must contain individual sample names
+  	#Rows in column 2 must contain numeric numbers that represent the corresponding class affiliation
+  	#The first two classes should be the samples of interest that are compared against each other (e.g. class 1 = treated samples, class 2 = control samples)
+	#Quality control samples (QCs) must must be included as class 3
+	#Starting from column 3, sample-wise response values for internal standards (ISs) must be listed
+	#Subsequent columns must cotain sample-wise response values for aligned features
+	#Empty cells should be avoided (execute missing value imputation prior to this script)
+	#Dataset-specific input parameters that have to be adjusted by the user are:
+        		#Vector that describes columns that contain IS response values (including 0 <- non-normalization for B-MIS) (see below)
+		        #Factor k for RUVrandom normalization (see below)
+         
+	#The file must be named "dataset.csv" and be of the file type .csv
+data.raw <- read.table("dataset.csv", sep = ",", header = TRUE, row.names = 1, check.names = FALSE)
+
+
+#set columns that contain IS information. IS columns must be the first response value containing columns in the dataset. The value "0" has to be kept in the vector/dataframe as it represents non-normalization (use of raw data) for B-MIS.
+#here,e.g.: 0 stands for non-normalization, values 1-5 indicate 5 IS in the first 5 rows.
+ISvect<-as.vector(c(0,1,2,3,4,5))
+IS<-data.frame(t(ISvect))
+
+#set factors of unwanted variation (k) for RUVrandom normalization (here k=3)
+k=3
+
+
+#Create new folder for statistical analysis of raw data
+dir.create("raw data")
+setwd("raw data")
+
+	#log-transform the dataset matrix
+	data.raw.log<-LogTransform(data.raw, base=exp(1))$output
+
+		#create across-group RLA plot
+		tiff("RLAPlot_ag_raw.tiff", width=8, height=8, units="in", res=300)
+		RlaPlots(data.raw.log, "ag", outline=FALSE, ylim=c(-1,1))
+		dev.off()
+
+
+		#create within-group RLA plot
+		tiff("RLAPlot_wg_raw.tiff", width=8, height=8, units="in", res=300)
+		RlaPlots(data.raw.log, "wg", outline=FALSE, ylim=c(-1,1))
+		dev.off()
+
+	
+		#compute p-values (Student큦 t-test, if Welch큦 t-test is anticipated use "var.equal = FALSE")
+		p.val <- matrix(as.character(combn(3,2)),ncol = 3)
+		p.values.raw <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
+		for(i in 2:ncol(data.raw.log))
+		{stat.test <- function(ttest) t.test(data.raw.log[,i] ~ data.raw.log[,1], data = data.raw.log, subset = data.raw.log[,1] %in% ttest, paired = FALSE, exact = TRUE, var.equal=TRUE) 
+		p.values.raw[,i-1] <- as.numeric(sapply(apply(p.val,2,stat.test),"[",3))}
+		colnames(p.values.raw)<-colnames(data.raw.log[-1])
+	
+		
+		#plot p-value histogram
+		tiff("p-value_histogram_raw.tiff", width=8, height=8, units="in", res=300)
+		hist(matrix(as.numeric(p.values.raw[1,])), main=row.names(p.values.raw[1,]),breaks = 20, xlab = "p-value", las = 1)
+		dev.off()
+
+
+		#compute q-values for p-value adjustment (usually only suitable for large datasets)
+		plotfile <- "q-values_raw.tiff"
+		q.values.raw <- qvalue(matrix(as.numeric(p.values.raw[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
+		tiff("q-values_raw.tiff", width=8, height=8, units="in", res=300)
+		plot(q.values.raw)
+		dev.off()
+		
+		
+		#create dataframe with p- and q-values and sort according to ascending p-values for subsequent p-value adjustment methods
+		p.val.stat.raw<-data.frame(cbind(ID = c(1:length(p.values.raw[1,])),round(matrix(as.numeric(p.values.raw[1,])),digits=4), round(q.values.raw$qvalues,digits=4)))
+		rownames(p.val.stat.raw)<-rownames(t(p.values.raw))
+		colnames(p.val.stat.raw)<-cbind("ID","p-value","q-value")
+		p.val.stat.raw <- p.val.stat.raw[order(p.val.stat.raw[,2]),]
+		
+				
+		#compute Benjamini-Hochberg p-value adjustment
+		p.val.stat.raw$BH<-p.adjust(p.val.stat.raw[,2], method="BH")
+		
+		
+		#compute SGoF p-value adjustment
+		SGoF.raw<-SGoF(p.val.stat.raw[,2], alpha=0.05, gamma=0.05)
+		p.val.stat.raw$SGoF<-SGoF.raw$Adjusted.pvalues
+
+		
+		#compute ROC statistics including AUC values
+			#get IDs of 25 most significant samples (or other suitable number depending on the dataset)
+			ID.pval.raw<-p.val.stat.raw[1:25,1]
+		data.raw.log.samples<-subset(data.raw.log, data.raw.log[,1]==1 | data.raw.log[,1]==2)
+			#caluculate mean AUC for 25 most significant samples
+			meanAUC.raw<-rowMeans(colAUC(data.raw.log.samples[,ID.pval.raw+1], data.raw.log.samples[,1]))
+			#calculate number of features with an AUC >0.8
+			AUC.raw<-colAUC(data.raw.log.samples[,2:length(data.raw.log.samples)], data.raw.log.samples[,1])
+			nAUC.raw<-length(AUC.raw[(AUC.raw[1,]>0.8)])
+		
+
+		#compute PCA and PLS-DA
+		ropls.class<-as.factor(data.raw.log.samples[,1])
+		ropls.data.raw.log<-data.raw.log.samples[, 2:dim(data.raw.log.samples)[2]]
+			#PCA
+			data.multiv.stat.raw.PCA <- opls(ropls.data.raw.log)
+			print(plot(data.multiv.stat.raw.PCA,parAsColFcVn=ropls.class))
+			savePlot("PCA_raw.wmf")
+			#PLS-DA
+			#if the first predictive component is already not significant you will get an error message and PLS-DA will not be computed
+			data.multiv.stat.raw.PLSDA <- opls(ropls.data.raw.log, ropls.class, predI = NA)
+			print(plot(data.multiv.stat.raw.PLSDA))
+			savePlot("PLS-DA_raw.wmf")
+			#Extract R2Y and Q2Y of PLS-DA (only possible if PLS-DA was computed)
+			try(R2YQ2Y.raw<-getSummaryDF(data.multiv.stat.raw.PLSDA),silent=TRUE)
+			R2YQ2Y.raw<-c(R2YQ2Y.raw[,2],R2YQ2Y.raw[,3],R2YQ2Y.raw[,5])
+			
+			
+		#compute CVs (geometric), median absolute deviation (MAD) and variance (Var) for experimental classes
+			#CV(geometric, calculation via standard deviation for log-transformed data)
+			CV.raw<-data.frame(matrix(ncol=3, nrow=ncol(data.raw.log)-1))
+			colnames(CV.raw)<-cbind("CV.raw QCs","CV.raw Class1","CV.raw Class2")
+			Subset<-subset(data.raw.log, data.raw.log[,1]==1)
+			CV.raw[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)	
+			Subset<-subset(data.raw.log, data.raw.log[,1]==2)
+			CV.raw[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+			Subset<-subset(data.raw.log, data.raw.log[,1]==3)
+			CV.raw[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+			#formula to translate standard deviation to geometric CV (only valid for log-transformed data)
+			CV.raw<-sqrt(exp(CV.raw^2)-1)*100
+			
+			#MAD
+			MAD.raw<-data.frame(matrix(ncol=3, nrow=ncol(data.raw.log)-1))
+			colnames(MAD.raw)<-cbind("MAD.raw QCs","MAD.raw Class1","MAD.raw Class2")
+			Subset<-subset(data.raw.log, data.raw.log[,1]==1)
+			MAD.raw[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)	
+			Subset<-subset(data.raw.log, data.raw.log[,1]==2)
+			MAD.raw[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+			Subset<-subset(data.raw.log, data.raw.log[,1]==3)
+			MAD.raw[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+			
+			#Var
+			Var.raw<-data.frame(matrix(ncol=3, nrow=ncol(data.raw.log)-1))
+			colnames(Var.raw)<-cbind("Var.raw QCs","Var.raw Class1","Var.raw Class2")
+			Subset<-subset(data.raw.log, data.raw.log[,1]==1)
+			Var.raw[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)	
+			Subset<-subset(data.raw.log, data.raw.log[,1]==2)
+			Var.raw[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+			Subset<-subset(data.raw.log, data.raw.log[,1]==3)
+			Var.raw[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+			
+			VarStat.raw<-cbind(CV.raw,MAD.raw,Var.raw)
+			
+			
+		setwd("..")
+		
+		
+		#create summary of statistical parameters for comparison of normalization
+		options(digits=4)
+		Summary<-data.frame(matrix(ncol=18,nrow=1))
+		Summary<-t(c(sum(p.val.stat.raw[,2]<0.05),sum(p.val.stat.raw[,3]<0.05),sum(p.val.stat.raw[,4]<0.05),sum(p.val.stat.raw[,5]<0.05),
+		meanAUC.raw,nAUC.raw,median(CV.raw[,1]),median(CV.raw[,2]),median(CV.raw[,3]),median(MAD.raw[,1]),median(MAD.raw[,2]),
+		median(MAD.raw[,3]),median(Var.raw[,1]),median(Var.raw[,2]),median(Var.raw[,3]), ifelse(exists("R2YQ2Y.raw"),R2YQ2Y.raw[1],NA),
+		ifelse(exists("R2YQ2Y.raw"),R2YQ2Y.raw[2],NA),ifelse(exists("R2YQ2Y.raw"),R2YQ2Y.raw[3],NA)))
+		
+		colnames(Summary)<-cbind("p-value <0.05","q-value <0.05","Benjamini-Hochberg adj. p-value","SGOF p-value <0.05",
+		"mean AUC (#25)","# AUC >0.8","median CV(geom) in QCs", "median CV(geom) Class1", "median CV(geom) Class2","median MAD QCs","median MAD Class1",
+		"median MAD Class2","median Var QCs","median Var Class1","median Var Class2","PLS-DA R2Y","PLS-DA Q2Y","#Optimum Components")
+
+	
+
+#Create new folder for statistical analysis of B-MIS normalized data. Here, as stated by Drotleff et al., B-MIS was executed without consideration of cut-offs for miniumum CV in raw data or CV improvement compared to raw data.
+dir.create("B-MIS")
+setwd("B-MIS")
+		
+		#compute normalization with all IS
+			#add column with value 1 for all samples for non-normalization
+			data.raw.BMIS<-add_column(data.raw,"noIS"=1:length(data.raw$Class),.after="Class")
+			data.raw.BMIS$noIS<-1
+			
+			#calculate CVs for all potential ISs (via mean and standard deviation)
+				#class-specific mean after normalizatin with all IS
+					mean.BMIS<-data.frame(matrix(nrow=length(IS), ncol=ncol(data.raw.BMIS)-1))
+					for (i in 1:length(IS))
+					{mean.BMIS.norm <- paste("IS", i, sep = "")
+		   			assign(mean.BMIS.norm, data.frame(c(data.raw.BMIS[1],data.raw.BMIS[2:ncol(data.raw.BMIS)]/data.raw.BMIS[,IS[,i]+2]), check.names = FALSE))
+		    			#change value for Class here if other class than QC (Class=3) should be processed
+		    			Subset<-subset(get(mean.BMIS.norm), Class==3)
+		    			mean.BMIS[i,]<-(apply(Subset[,2:ncol(Subset)], 2, FUN=mean))}
+		    		#class-specific standard deviation after normalizatin with all IS
+					sd.BMIS<-data.frame(matrix(nrow=length(IS), ncol=ncol(data.raw.BMIS)-1))
+					for (i in 1:length(IS))
+					{sd.BMIS.norm <- paste("IS", i, sep = "")
+					assign(sd.BMIS.norm, data.frame(c(data.raw.BMIS[1],data.raw.BMIS[2:ncol(data.raw.BMIS)]/data.raw.BMIS[,IS[,i]+2]), check.names = FALSE))
+					#change value for Class here if other class than QC (Class=3) should be processed
+		    			Subset<-subset(get(sd.BMIS.norm), Class==3)
+					sd.BMIS[i,]<-(apply(Subset[,2:ncol(Subset)], 2, FUN=sd))}
+				CV.norm.BMIS<-sd.BMIS/mean.BMIS*100
+				colnames(CV.norm.BMIS)<-colnames(data.raw.BMIS[-1])
+			
+			#Find IS that produces minimum class-specific CV
+				BMIS.assignment<-data.frame(matrix(nrow=2, ncol=ncol(data.raw.BMIS)-1))
+				BMIS.assignment[1,]<-apply(CV.norm.BMIS[,1:ncol(CV.norm.BMIS)], 2, FUN=min)
+				for (i in 1:ncol(BMIS.assignment))
+				{BMIS.assignment[2,i]<-rownames(CV.norm.BMIS)[which.min(apply(CV.norm.BMIS[i],MARGIN=1,min))]}
+				rownames(BMIS.assignment) <- c("minimum CV in %","IS ID")
+				colnames(BMIS.assignment) <- colnames(data.raw.BMIS[-1])
+				write.table(t(BMIS.assignment), "B-MIS_assignment.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+				
+			#Normalize each feature with assigned B-MIS
+			BMIS.assignment<-cbind(1,BMIS.assignment)
+			colnames(BMIS.assignment)<-colnames(data.raw.BMIS)
+			data.BMIS<-data.matrix(rbind(BMIS.assignment[2,],data.raw.BMIS))
+			
+			for (i in length(IS):(length(data.BMIS[1,])-2))
+			{for (z in 1:length(IS))
+			{
+			if(data.BMIS[1,i+2]==z)
+			{data.BMIS[,i+2]<-data.BMIS[,i+2]/data.BMIS[,z+1]}}}
+			data.BMIS<-data.frame(data.BMIS[-1,-2])
+			colnames(data.BMIS)<-colnames(data.raw)
+			write.table(data.BMIS, "B-MIS.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+		
+		
+		
+		#statistical analysis of B-MIS normalized dataset
+		#log-transform the dataset matrix
+			data.BMIS.log<-LogTransform(data.BMIS, base=exp(1))$output
+			
+		
+				#create across-group RLA plot
+				tiff("RLAPlot_ag_BMIS.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.BMIS.log, "ag", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+		
+				#create within-group RLA plot
+				tiff("RLAPlot_wg_BMIS.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.BMIS.log, "wg", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+			
+				#compute p-values (Student큦 t-test, if Welch큦 t-test is anticipated use "var.equal = FALSE")
+				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
+				p.values.BMIS <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
+				for(i in 2:ncol(data.BMIS.log))
+				{stat.test <- function(ttest) t.test(data.BMIS.log[,i] ~ data.BMIS.log[,1], data = data.BMIS.log, subset = data.BMIS.log[,1] %in% ttest, paired = FALSE, exact = TRUE, var.equal=TRUE) 
+				p.values.BMIS[,i-1] <- as.numeric(sapply(apply(p.val,2,stat.test),"[",3))}
+				colnames(p.values.BMIS)<-colnames(data.BMIS.log[-1])
+			
+				
+				#plot p-value histogram
+				tiff("p-value_histogram_BMIS.tiff", width=8, height=8, units="in", res=300)
+				hist(matrix(as.numeric(p.values.BMIS[1,])), main=row.names(p.values.BMIS[1,]),breaks = 20, xlab = "p-value", las = 1)
+				dev.off()
+		
+		
+				#compute q-values for p-value adjustment
+				plotfile <- "q-values_BMIS.tiff"
+				q.values.BMIS <- qvalue(matrix(as.numeric(p.values.BMIS[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
+				tiff("q-values_BMIS.tiff", width=8, height=8, units="in", res=300)
+				plot(q.values.BMIS)
+				dev.off()
+				
+				
+				#create dataframe with p- and q-values and sort according to ascending p-values for subsequent p-value adjustment methods
+				p.val.stat.BMIS<-data.frame(cbind(ID = c(1:length(p.values.BMIS[1,])),round(matrix(as.numeric(p.values.BMIS[1,])),digits=4), round(q.values.BMIS$qvalues,digits=4)))
+				rownames(p.val.stat.BMIS)<-rownames(t(p.values.BMIS))
+				colnames(p.val.stat.BMIS)<-cbind("ID","p-value","q-value")
+				p.val.stat.BMIS <- p.val.stat.BMIS[order(p.val.stat.BMIS[,2]),]
+				
+						
+				#compute Benjamini-Hochberg p-value adjustment
+				p.val.stat.BMIS$BH<-p.adjust(p.val.stat.BMIS[,2], method="BH")
+				
+				
+				#compute SGoF p-value adjustment
+				SGoF.BMIS<-SGoF(p.val.stat.BMIS[,2], alpha=0.05, gamma=0.05)
+				p.val.stat.BMIS$SGoF<-SGoF.BMIS$Adjusted.pvalues
+		
+				
+				#compute ROC statistics including AUC values
+					#get IDs of 25 most significant samples (or other suitable number depending on the dataset)
+					ID.pval.BMIS<-p.val.stat.BMIS[1:25,1]
+				data.BMIS.log.samples<-subset(data.BMIS.log, data.BMIS.log[,1]==1 | data.BMIS.log[,1]==2)
+					#caluculate mean AUC for 25 most significant samples
+					meanAUC.BMIS<-rowMeans(colAUC(data.BMIS.log.samples[,ID.pval.BMIS+1], data.BMIS.log.samples[,1]))
+					#calculate number of features with an AUC >0.8
+					AUC.BMIS<-colAUC(data.BMIS.log.samples[,2:length(data.BMIS.log.samples[1,])], data.BMIS.log.samples[,1])
+					nAUC.BMIS<-length(AUC.BMIS[(AUC.BMIS[1,]>0.8)])
+				
+		
+				#compute PCA and PLS-DA
+				ropls.class<-as.factor(data.BMIS.log.samples[,1])
+				ropls.data.BMIS.log<-data.BMIS.log.samples[, 2:dim(data.BMIS.log.samples)[2]]
+					#PCA
+					data.multiv.stat.BMIS.PCA <- opls(ropls.data.BMIS.log)
+					print(plot(data.multiv.stat.BMIS.PCA,parAsColFcVn=ropls.class))
+					savePlot("PCA_BMIS.wmf")
+					#PLS-DA
+					#if the first predictive component is already not significant you will get an error message and PLS-DA will not be computed
+					data.multiv.stat.BMIS.PLSDA <- opls(ropls.data.BMIS.log, ropls.class, predI = NA)
+					print(plot(data.multiv.stat.BMIS.PLSDA))
+					savePlot("PLS-DA_BMIS.wmf")
+					#Extract R2Y and Q2Y of PLS-DA (only possible if PLS-DA was computed)
+					try(R2YQ2Y.BMIS<-getSummaryDF(data.multiv.stat.BMIS.PLSDA),silent=TRUE)
+					R2YQ2Y.BMIS<-c(R2YQ2Y.BMIS[,2],R2YQ2Y.BMIS[,3],R2YQ2Y.BMIS[,5])
+					
+					
+			#compute CVs (geometric), median absolute deviation (MAD) and variance (Var) for experimental classes
+				#CV(geometric, calculation via standard deviation for log-transformed data)
+				CV.BMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.BMIS.log)-1))
+				colnames(CV.BMIS)<-cbind("CV.BMIS QCs","CV.BMIS Class1","CV.BMIS Class2")
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==1)
+				CV.BMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)	
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==2)
+				CV.BMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==3)
+				CV.BMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+				#formula to translate standard deviation to geometric CV (only valid for log-transformed data)
+				CV.BMIS<-sqrt(exp(CV.BMIS^2)-1)*100
+				
+				#MAD
+				MAD.BMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.BMIS.log)-1))
+				colnames(MAD.BMIS)<-cbind("MAD.BMIS QCs","MAD.BMIS Class1","MAD.BMIS Class2")
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==1)
+				MAD.BMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)	
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==2)
+				MAD.BMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==3)
+				MAD.BMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+				
+				#Var
+				Var.BMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.BMIS.log)-1))
+				colnames(Var.BMIS)<-cbind("Var.BMIS QCs","Var.BMIS Class1","Var.BMIS Class2")
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==1)
+				Var.BMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)	
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==2)
+				Var.BMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+				Subset<-subset(data.BMIS.log, data.BMIS.log[,1]==3)
+				Var.BMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					
+				VarStat.BMIS<-cbind(CV.BMIS,MAD.BMIS,Var.BMIS)
+			
+							
+				setwd("..")
+			
+		
+				#create summary of statistical parameters for comparison of normalization
+				options(digits=4)
+				Summary<-rbind(Summary,t(c(sum(p.val.stat.BMIS[,2]<0.05),sum(p.val.stat.BMIS[,3]<0.05),sum(p.val.stat.BMIS[,4]<0.05),sum(p.val.stat.BMIS[,5]<0.05),
+				meanAUC.BMIS,nAUC.BMIS,median(CV.BMIS[,1]),median(CV.BMIS[,2]),median(CV.BMIS[,3]),median(MAD.BMIS[,1]),median(MAD.BMIS[,2]),
+				median(MAD.BMIS[,3]),median(Var.BMIS[,1]),median(Var.BMIS[,2]),median(Var.BMIS[,3]), ifelse(exists("R2YQ2Y.BMIS"),R2YQ2Y.BMIS[1],NA),
+				ifelse(exists("R2YQ2Y.BMIS"),R2YQ2Y.BMIS[2],NA),ifelse(exists("R2YQ2Y.BMIS"),R2YQ2Y.BMIS[3],NA))))
+		
+		
+		
+		
+		
+#Create new folder for statistical analysis of CCMN normalized data.
+dir.create("CCMN")
+setwd("CCMN")
+		
+			#normalize the dataset with CCMN
+			data.raw.NormMets<-data.raw.log[-1]
+			data.raw.CCMN <- NormQcmets(data.raw.NormMets, data.raw.log[,1], method = "ccmn", qcmets = ISvect[-1],check.names=FALSE)
+			data.CCMN<-data.frame(matrix(nrow=nrow(data.raw.CCMN$featuredata), ncol=ncol(data.raw.CCMN$featuredata)))
+			data.CCMN<-data.raw.CCMN$featuredata
+			colnames(data.CCMN)<-colnames(data.raw[(length(IS)+1):length(data.raw)])
+			data.CCMN<-add_column(data.CCMN,"Class"=1:length(data.raw$Class),.before=1)
+			data.CCMN$Class<-data.raw$Class
+			write.table(data.CCMN, "CCMN.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+
+		
+		#statistical analysis of CCMN normalized dataset
+							
+				#create across-group RLA plot
+				tiff("RLAPlot_ag_CCMN.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.CCMN, "ag", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+		
+				#create within-group RLA plot
+				tiff("RLAPlot_wg_CCMN.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.CCMN, "wg", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+			
+				#compute p-values (Student큦 t-test, if Welch큦 t-test is anticipated use "var.equal = FALSE")
+				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
+				p.values.CCMN <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
+				for(i in 2:ncol(data.CCMN))
+				{stat.test <- function(ttest) t.test(data.CCMN[,i] ~ data.CCMN[,1], data = data.CCMN, subset = data.CCMN[,1] %in% ttest, paired = FALSE, exact = TRUE, var.equal=TRUE) 
+				p.values.CCMN[,i-1] <- as.numeric(sapply(apply(p.val,2,stat.test),"[",3))}
+				colnames(p.values.CCMN)<-colnames(data.CCMN[-1])
+			
+				
+				#plot p-value histogram
+				tiff("p-value_histogram_CCMN.tiff", width=8, height=8, units="in", res=300)
+				hist(matrix(as.numeric(p.values.CCMN[1,])), main=row.names(p.values.CCMN[1,]),breaks = 20, xlab = "p-value", las = 1)
+				dev.off()
+		
+		
+				#compute q-values for p-value adjustment
+				plotfile <- "q-values_CCMN.tiff"
+				q.values.CCMN <- qvalue(matrix(as.numeric(p.values.CCMN[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
+				tiff("q-values_CCMN.tiff", width=8, height=8, units="in", res=300)
+				plot(q.values.CCMN)
+				dev.off()
+				
+				
+				#create dataframe with p- and q-values and sort according to ascending p-values for subsequent p-value adjustment methods
+				p.val.stat.CCMN<-data.frame(cbind(ID = c(1:length(p.values.CCMN[1,])),round(matrix(as.numeric(p.values.CCMN[1,])),digits=4), round(q.values.CCMN$qvalues,digits=4)))
+				rownames(p.val.stat.CCMN)<-rownames(t(p.values.CCMN))
+				colnames(p.val.stat.CCMN)<-cbind("ID","p-value","q-value")
+				p.val.stat.CCMN <- p.val.stat.CCMN[order(p.val.stat.CCMN[,2]),]
+				
+						
+				#compute Benjamini-Hochberg p-value adjustment
+				p.val.stat.CCMN$BH<-p.adjust(p.val.stat.CCMN[,2], method="BH")
+				
+				
+				#compute SGoF p-value adjustment
+				SGoF.CCMN<-SGoF(p.val.stat.CCMN[,2], alpha=0.05, gamma=0.05)
+				p.val.stat.CCMN$SGoF<-SGoF.CCMN$Adjusted.pvalues
+		
+				
+				#compute ROC statistics including AUC values
+					#get IDs of 25 most significant samples (or other suitable number depending on the dataset)
+					ID.pval.CCMN<-p.val.stat.CCMN[1:25,1]
+				data.CCMN.samples<-subset(data.CCMN, data.CCMN[,1]==1 | data.CCMN[,1]==2)
+					#caluculate mean AUC for 25 most significant samples
+					meanAUC.CCMN<-rowMeans(colAUC(data.CCMN.samples[,ID.pval.CCMN+1], data.CCMN.samples[,1]))
+					#calculate number of features with an AUC >0.8
+					AUC.CCMN<-colAUC(data.CCMN.samples[,2:length(data.CCMN.samples[1,])], data.CCMN.samples[,1])
+					nAUC.CCMN<-length(AUC.CCMN[(AUC.CCMN[1,]>0.8)])
+				
+		
+				#compute PCA and PLS-DA
+				ropls.class<-as.factor(data.CCMN.samples[,1])
+				ropls.data.CCMN<-data.CCMN.samples[, 2:dim(data.CCMN.samples)[2]]
+					#PCA
+					data.multiv.stat.CCMN.PCA <- opls(ropls.data.CCMN)
+					print(plot(data.multiv.stat.CCMN.PCA,parAsColFcVn=ropls.class))
+					savePlot("PCA_CCMN.wmf")
+					#PLS-DA
+					#if the first predictive component is already not significant you will get an error message and PLS-DA will not be computed
+					data.multiv.stat.CCMN.PLSDA <- opls(ropls.data.CCMN, ropls.class, predI = NA)
+					print(plot(data.multiv.stat.CCMN.PLSDA))
+					savePlot("PLS-DA_CCMN.wmf")
+					#Extract R2Y and Q2Y of PLS-DA (only possible if PLS-DA was computed)
+					try(R2YQ2Y.CCMN<-getSummaryDF(data.multiv.stat.CCMN.PLSDA),silent=TRUE)
+					R2YQ2Y.CCMN<-c(R2YQ2Y.CCMN[,2],R2YQ2Y.CCMN[,3],R2YQ2Y.CCMN[,5])
+					
+					
+				#compute CVs (geometric), median absolute deviation (MAD) and variance (Var) for experimental classes
+					#CV(geometric, calculation via standard deviation for log-transformed data)
+					CV.CCMN<-data.frame(matrix(ncol=3, nrow=ncol(data.CCMN)-1))
+					colnames(CV.CCMN)<-cbind("CV.CCMN QCs","CV.CCMN Class1","CV.CCMN Class2")
+					Subset<-subset(data.CCMN, data.CCMN[,1]==1)
+					CV.CCMN[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)	
+					Subset<-subset(data.CCMN, data.CCMN[,1]==2)
+					CV.CCMN[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					Subset<-subset(data.CCMN, data.CCMN[,1]==3)
+					CV.CCMN[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					#formula to translate standard deviation to geometric CV (only valid for log-transformed data)
+					CV.CCMN<-sqrt(exp(CV.CCMN^2)-1)*100
+					
+					#MAD
+					MAD.CCMN<-data.frame(matrix(ncol=3, nrow=ncol(data.CCMN)-1))
+					colnames(MAD.CCMN)<-cbind("MAD.CCMN QCs","MAD.CCMN Class1","MAD.CCMN Class2")
+					Subset<-subset(data.CCMN, data.CCMN[,1]==1)
+					MAD.CCMN[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)	
+					Subset<-subset(data.CCMN, data.CCMN[,1]==2)
+					MAD.CCMN[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					Subset<-subset(data.CCMN, data.CCMN[,1]==3)
+					MAD.CCMN[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					
+					#Var
+					Var.CCMN<-data.frame(matrix(ncol=3, nrow=ncol(data.CCMN)-1))
+					colnames(Var.CCMN)<-cbind("Var.CCMN QCs","Var.CCMN Class1","Var.CCMN Class2")
+					Subset<-subset(data.CCMN, data.CCMN[,1]==1)
+					Var.CCMN[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)	
+					Subset<-subset(data.CCMN, data.CCMN[,1]==2)
+					Var.CCMN[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					Subset<-subset(data.CCMN, data.CCMN[,1]==3)
+					Var.CCMN[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					
+					VarStat.CCMN<-cbind(CV.CCMN,MAD.CCMN,Var.CCMN)
+					
+					
+				setwd("..")
+							
+						
+				#create summary of statistical parameters for comparison of normalization
+				options(digits=4)
+				Summary<-rbind(Summary,t(c(sum(p.val.stat.CCMN[,2]<0.05),sum(p.val.stat.CCMN[,3]<0.05),sum(p.val.stat.CCMN[,4]<0.05),sum(p.val.stat.CCMN[,5]<0.05),
+				meanAUC.CCMN,nAUC.CCMN,median(CV.CCMN[,1]),median(CV.CCMN[,2]),median(CV.CCMN[,3]),median(MAD.CCMN[,1]),median(MAD.CCMN[,2]),
+				median(MAD.CCMN[,3]),median(Var.CCMN[,1]),median(Var.CCMN[,2]),median(Var.CCMN[,3]), ifelse(exists("R2YQ2Y.CCMN"),R2YQ2Y.CCMN[1],NA),
+				ifelse(exists("R2YQ2Y.CCMN"),R2YQ2Y.CCMN[2],NA),ifelse(exists("R2YQ2Y.CCMN"),R2YQ2Y.CCMN[3],NA))))
+
+
+
+
+#Create new folder for statistical analysis of NOMIS normalized data.
+dir.create("NOMIS")
+setwd("NOMIS")
+		
+			#normalize the dataset with NOMIS
+			data.raw.NOMIS <- NormQcmets(data.raw.NormMets, method = "nomis", qcmets = ISvect[-1],check.names=FALSE)
+			data.NOMIS<-data.frame(matrix(nrow=nrow(data.raw.NOMIS$featuredata), ncol=ncol(data.raw.NOMIS$featuredata)))
+			data.NOMIS<-data.raw.NOMIS$featuredata
+			colnames(data.NOMIS)<-colnames(data.raw[(length(IS)+1):length(data.raw)])
+			data.NOMIS<-add_column(data.NOMIS,"Class"=1:length(data.raw$Class),.before=1)
+			data.NOMIS$Class<-data.raw$Class
+			write.table(data.NOMIS, "NOMIS.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+
+		
+		#statistical analysis of NOMIS normalized dataset
+							
+				#create across-group RLA plot
+				tiff("RLAPlot_ag_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.NOMIS, "ag", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+		
+				#create within-group RLA plot
+				tiff("RLAPlot_wg_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				RlaPlots(data.NOMIS, "wg", outline=FALSE, ylim=c(-1,1))
+				dev.off()
+		
+			
+				#compute p-values (Student큦 t-test, if Welch큦 t-test is anticipated use "var.equal = FALSE")
+				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
+				p.values.NOMIS <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
+				for(i in 2:ncol(data.NOMIS))
+				{stat.test <- function(ttest) t.test(data.NOMIS[,i] ~ data.NOMIS[,1], data = data.NOMIS, subset = data.NOMIS[,1] %in% ttest, paired = FALSE, exact = TRUE, var.equal=TRUE) 
+				p.values.NOMIS[,i-1] <- as.numeric(sapply(apply(p.val,2,stat.test),"[",3))}
+				colnames(p.values.NOMIS)<-colnames(data.NOMIS[-1])
+			
+				
+				#plot p-value histogram
+				tiff("p-value_histogram_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				hist(matrix(as.numeric(p.values.NOMIS[1,])), main=row.names(p.values.NOMIS[1,]),breaks = 20, xlab = "p-value", las = 1)
+				dev.off()
+		
+		
+				#compute q-values for p-value adjustment
+				plotfile <- "q-values_NOMIS.tiff"
+				q.values.NOMIS <- qvalue(matrix(as.numeric(p.values.NOMIS[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
+				tiff("q-values_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				plot(q.values.NOMIS)
+				dev.off()
+				
+				
+				#create dataframe with p- and q-values and sort according to ascending p-values for subsequent p-value adjustment methods
+				p.val.stat.NOMIS<-data.frame(cbind(ID = c(1:length(p.values.NOMIS[1,])),round(matrix(as.numeric(p.values.NOMIS[1,])),digits=4), round(q.values.NOMIS$qvalues,digits=4)))
+				rownames(p.val.stat.NOMIS)<-rownames(t(p.values.NOMIS))
+				colnames(p.val.stat.NOMIS)<-cbind("ID","p-value","q-value")
+				p.val.stat.NOMIS <- p.val.stat.NOMIS[order(p.val.stat.NOMIS[,2]),]
+				
+						
+				#compute Benjamini-Hochberg p-value adjustment
+				p.val.stat.NOMIS$BH<-p.adjust(p.val.stat.NOMIS[,2], method="BH")
+				
+				
+				#compute SGoF p-value adjustment
+				SGoF.NOMIS<-SGoF(p.val.stat.NOMIS[,2], alpha=0.05, gamma=0.05)
+				p.val.stat.NOMIS$SGoF<-SGoF.NOMIS$Adjusted.pvalues
+		
+				
+				#compute ROC statistics including AUC values
+					#get IDs of 25 most significant samples (or other suitable number depending on the dataset)
+					ID.pval.NOMIS<-p.val.stat.NOMIS[1:25,1]
+				data.NOMIS.samples<-subset(data.NOMIS, data.NOMIS[,1]==1 | data.NOMIS[,1]==2)
+					#caluculate mean AUC for 25 most significant samples
+					meanAUC.NOMIS<-rowMeans(colAUC(data.NOMIS.samples[,ID.pval.NOMIS+1], data.NOMIS.samples[,1]))
+					#calculate number of features with an AUC >0.8
+					AUC.NOMIS<-colAUC(data.NOMIS.samples[,2:length(data.NOMIS.samples[1,])], data.NOMIS.samples[,1])
+					nAUC.NOMIS<-length(AUC.NOMIS[(AUC.NOMIS[1,]>0.8)])
+				
+		
+				#compute PCA and PLS-DA
+				ropls.class<-as.factor(data.NOMIS.samples[,1])
+				ropls.data.NOMIS<-data.NOMIS.samples[, 2:dim(data.NOMIS.samples)[2]]
+					#PCA
+					data.multiv.stat.NOMIS.PCA <- opls(ropls.data.NOMIS)
+					print(plot(data.multiv.stat.NOMIS.PCA,parAsColFcVn=ropls.class))
+					savePlot("PCA_NOMIS.wmf")
+					#PLS-DA
+					#if the first predictive component is already not significant you will get an error message and PLS-DA will not be computed
+					data.multiv.stat.NOMIS.PLSDA <- opls(ropls.data.NOMIS, ropls.class, predI = NA)
+					print(plot(data.multiv.stat.NOMIS.PLSDA))
+					savePlot("PLS-DA_NOMIS.wmf")
+					#Extract R2Y and Q2Y of PLS-DA (only possible if PLS-DA was computed)
+					try(R2YQ2Y.NOMIS<-getSummaryDF(data.multiv.stat.NOMIS.PLSDA),silent=TRUE)
+					R2YQ2Y.NOMIS<-c(R2YQ2Y.NOMIS[,2],R2YQ2Y.NOMIS[,3],R2YQ2Y.NOMIS[,5])
+					
+					
+				#compute CVs (geometric), median absolute deviation (MAD) and variance (Var) for experimental classes
+					#CV(geometric, calculation via standard deviation for log-transformed data)
+					CV.NOMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.NOMIS)-1))
+					colnames(CV.NOMIS)<-cbind("CV.NOMIS QCs","CV.NOMIS Class1","CV.NOMIS Class2")
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==1)
+					CV.NOMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)	
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==2)
+					CV.NOMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==3)
+					CV.NOMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					#formula to translate standard deviation to geometric CV (only valid for log-transformed data)
+					CV.NOMIS<-sqrt(exp(CV.NOMIS^2)-1)*100
+					
+					#MAD
+					MAD.NOMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.NOMIS)-1))
+					colnames(MAD.NOMIS)<-cbind("MAD.NOMIS QCs","MAD.NOMIS Class1","MAD.NOMIS Class2")
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==1)
+					MAD.NOMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)	
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==2)
+					MAD.NOMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==3)
+					MAD.NOMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					
+					#Var
+					Var.NOMIS<-data.frame(matrix(ncol=3, nrow=ncol(data.NOMIS)-1))
+					colnames(Var.NOMIS)<-cbind("Var.NOMIS QCs","Var.NOMIS Class1","Var.NOMIS Class2")
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==1)
+					Var.NOMIS[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)	
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==2)
+					Var.NOMIS[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					Subset<-subset(data.NOMIS, data.NOMIS[,1]==3)
+					Var.NOMIS[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					
+					VarStat.NOMIS<-cbind(CV.NOMIS,MAD.NOMIS,Var.NOMIS)
+					
+					
+				setwd("..")
+							
+						
+				#create summary of statistical parameters for comparison of normalization
+				options(digits=4)
+				Summary<-rbind(Summary,t(c(sum(p.val.stat.NOMIS[,2]<0.05),sum(p.val.stat.NOMIS[,3]<0.05),sum(p.val.stat.NOMIS[,4]<0.05),sum(p.val.stat.NOMIS[,5]<0.05),
+				meanAUC.NOMIS,nAUC.NOMIS,median(CV.NOMIS[,1]),median(CV.NOMIS[,2]),median(CV.NOMIS[,3]),median(MAD.NOMIS[,1]),median(MAD.NOMIS[,2]),
+				median(MAD.NOMIS[,3]),median(Var.NOMIS[,1]),median(Var.NOMIS[,2]),median(Var.NOMIS[,3]), ifelse(exists("R2YQ2Y.NOMIS"),R2YQ2Y.NOMIS[1],NA),
+				ifelse(exists("R2YQ2Y.NOMIS"),R2YQ2Y.NOMIS[2],NA),ifelse(exists("R2YQ2Y.NOMIS"),R2YQ2Y.NOMIS[3],NA))))
+
+
+
+ #Create new folder for statistical analysis of RUVrand normalized data.
+ dir.create("RUVrand")
+ setwd("RUVrand")
+ 		
+ 			#normalize the dataset with RUVrand
+ 			data.raw.RUVrand <- NormQcmets(data.raw.NormMets, method = "ruvrand", qcmets = ISvect[-1], k=k)
+ 			data.RUVrand<-as.data.frame(data.raw.RUVrand$featuredata)
+ 			data.RUVrand<-add_column(data.RUVrand,"Class"=1:length(data.raw$Class),.before=1)
+ 			data.RUVrand$Class<-data.raw$Class
+ 			write.table(data.RUVrand, "RUVrand.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+ 
+ 		
+ 		#statistical analysis of RUVrand normalized dataset
+ 							
+ 				#create across-group RLA plot
+ 				tiff("RLAPlot_ag_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				RlaPlots(data.RUVrand, "ag", outline=FALSE, ylim=c(-1,1))
+ 				dev.off()
+ 		
+ 		
+ 				#create within-group RLA plot
+ 				tiff("RLAPlot_wg_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				RlaPlots(data.RUVrand, "wg", outline=FALSE, ylim=c(-1,1))
+ 				dev.off()
+ 		
+ 			
+ 				#compute p-values (Student큦 t-test, if Welch큦 t-test is anticipated use "var.equal = FALSE")
+ 				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
+ 				p.values.RUVrand <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
+ 				for(i in 2:ncol(data.RUVrand))
+ 				{stat.test <- function(ttest) t.test(data.RUVrand[,i] ~ data.RUVrand[,1], data = data.RUVrand, subset = data.RUVrand[,1] %in% ttest, paired = FALSE, exact = TRUE, var.equal=TRUE) 
+ 				p.values.RUVrand[,i-1] <- as.numeric(sapply(apply(p.val,2,stat.test),"[",3))}
+ 				colnames(p.values.RUVrand)<-colnames(data.RUVrand[-1])
+ 			
+ 				
+ 				#plot p-value histogram
+ 				tiff("p-value_histogram_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				hist(matrix(as.numeric(p.values.RUVrand[1,])), main=row.names(p.values.RUVrand[1,]),breaks = 20, xlab = "p-value", las = 1)
+ 				dev.off()
+ 		
+ 		
+ 				#compute q-values for p-value adjustment
+ 				plotfile <- "q-values_RUVrand.tiff"
+ 				q.values.RUVrand <- qvalue(matrix(as.numeric(p.values.RUVrand[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
+ 				tiff("q-values_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				plot(q.values.RUVrand)
+ 				dev.off()
+ 				
+ 				
+ 				#create dataframe with p- and q-values and sort according to ascending p-values for subsequent p-value adjustment methods
+ 				p.val.stat.RUVrand<-data.frame(cbind(ID = c(1:length(p.values.RUVrand[1,])),round(matrix(as.numeric(p.values.RUVrand[1,])),digits=4), round(q.values.RUVrand$qvalues,digits=4)))
+ 				rownames(p.val.stat.RUVrand)<-rownames(t(p.values.RUVrand))
+ 				colnames(p.val.stat.RUVrand)<-cbind("ID","p-value","q-value")
+ 				p.val.stat.RUVrand <- p.val.stat.RUVrand[order(p.val.stat.RUVrand[,2]),]
+ 				
+ 						
+ 				#compute Benjamini-Hochberg p-value adjustment
+ 				p.val.stat.RUVrand$BH<-p.adjust(p.val.stat.RUVrand[,2], method="BH")
+ 				
+ 				
+ 				#compute SGoF p-value adjustment
+ 				SGoF.RUVrand<-SGoF(p.val.stat.RUVrand[,2], alpha=0.05, gamma=0.05)
+ 				p.val.stat.RUVrand$SGoF<-SGoF.RUVrand$Adjusted.pvalues
+ 		
+ 				
+ 				#compute ROC statistics including AUC values
+ 					#get IDs of 25 most significant samples (or other suitable number depending on the dataset)
+ 					ID.pval.RUVrand<-p.val.stat.RUVrand[1:25,1]
+ 				data.RUVrand.samples<-subset(data.RUVrand, data.RUVrand[,1]==1 | data.RUVrand[,1]==2)
+ 					#caluculate mean AUC for 25 most significant samples
+ 					meanAUC.RUVrand<-rowMeans(colAUC(data.RUVrand.samples[,ID.pval.RUVrand+1], data.RUVrand.samples[,1]))
+ 					#calculate number of features with an AUC >0.8
+ 					AUC.RUVrand<-colAUC(data.RUVrand.samples[,2:length(data.RUVrand.samples[1,])], data.RUVrand.samples[,1])
+ 					nAUC.RUVrand<-length(AUC.RUVrand[(AUC.RUVrand[1,]>0.8)])
+ 				
+ 		
+ 				#compute PCA and PLS-DA
+ 				ropls.class<-as.factor(data.RUVrand.samples[,1])
+ 				ropls.data.RUVrand<-data.RUVrand.samples[, 2:dim(data.RUVrand.samples)[2]]
+ 					#PCA
+ 					data.multiv.stat.RUVrand.PCA <- opls(ropls.data.RUVrand)
+ 					print(plot(data.multiv.stat.RUVrand.PCA,parAsColFcVn=ropls.class))
+ 					savePlot("PCA_RUVrand.wmf")
+ 					#PLS-DA
+ 					#if the first predictive component is already not significant you will get an error message and PLS-DA will not be computed
+ 					data.multiv.stat.RUVrand.PLSDA <- opls(ropls.data.RUVrand, ropls.class, predI = NA)
+ 					print(plot(data.multiv.stat.RUVrand.PLSDA))
+ 					savePlot("PLS-DA_RUVrand.wmf")
+ 					#Extract R2Y and Q2Y of PLS-DA (only possible if PLS-DA was computed)
+ 					try(R2YQ2Y.RUVrand<-getSummaryDF(data.multiv.stat.RUVrand.PLSDA),silent=TRUE)
+ 					R2YQ2Y.RUVrand<-c(R2YQ2Y.RUVrand[,2],R2YQ2Y.RUVrand[,3],R2YQ2Y.RUVrand[,5])
+ 					
+ 					
+				#compute CVs (geometric), median absolute deviation (MAD) and variance (Var) for experimental classes
+					#CV(geometric, calculation via standard deviation for log-transformed data)
+					CV.RUVrand<-data.frame(matrix(ncol=3, nrow=ncol(data.RUVrand)-1))
+					colnames(CV.RUVrand)<-cbind("CV.RUVrand QCs","CV.RUVrand Class1","CV.RUVrand Class2")
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==1)
+					CV.RUVrand[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)	
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==2)
+					CV.RUVrand[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==3)
+					CV.RUVrand[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=sd)
+					#formula to translate standard deviation to geometric CV (only valid for log-transformed data)
+					CV.RUVrand<-sqrt(exp(CV.RUVrand^2)-1)*100
+					
+					#MAD
+					MAD.RUVrand<-data.frame(matrix(ncol=3, nrow=ncol(data.RUVrand)-1))
+					colnames(MAD.RUVrand)<-cbind("MAD.RUVrand QCs","MAD.RUVrand Class1","MAD.RUVrand Class2")
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==1)
+					MAD.RUVrand[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)	
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==2)
+					MAD.RUVrand[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==3)
+					MAD.RUVrand[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=mad)
+					
+					#Var
+					Var.RUVrand<-data.frame(matrix(ncol=3, nrow=ncol(data.RUVrand)-1))
+					colnames(Var.RUVrand)<-cbind("Var.RUVrand QCs","Var.RUVrand Class1","Var.RUVrand Class2")
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==1)
+					Var.RUVrand[,2]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)	
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==2)
+					Var.RUVrand[,3]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+					Subset<-subset(data.RUVrand, data.RUVrand[,1]==3)
+					Var.RUVrand[,1]<-apply(Subset[,2:ncol(Subset)], 2, FUN=var)
+ 					
+ 					VarStat.RUVrand<-cbind(CV.RUVrand,MAD.RUVrand,Var.RUVrand)
+ 					
+ 					
+				setwd("..")
+							
+						
+				#create summary of statistical parameters for comparison of normalization
+				options(digits=4)
+				Summary<-rbind(Summary,t(c(sum(p.val.stat.RUVrand[,2]<0.05),sum(p.val.stat.RUVrand[,3]<0.05),sum(p.val.stat.RUVrand[,4]<0.05),sum(p.val.stat.RUVrand[,5]<0.05),
+				meanAUC.RUVrand,nAUC.RUVrand,median(CV.RUVrand[,1]),median(CV.RUVrand[,2]),median(CV.RUVrand[,3]),median(MAD.RUVrand[,1]),median(MAD.RUVrand[,2]),
+				median(MAD.RUVrand[,3]),median(Var.RUVrand[,1]),median(Var.RUVrand[,2]),median(Var.RUVrand[,3]), ifelse(exists("R2YQ2Y.RUVrand"),R2YQ2Y.RUVrand[1],NA),
+				ifelse(exists("R2YQ2Y.RUVrand"),R2YQ2Y.RUVrand[2],NA),ifelse(exists("R2YQ2Y.RUVrand"),R2YQ2Y.RUVrand[3],NA))))
+				rownames(Summary)<-rbind("raw data","B-MIS","CCMN","NOMIS","RUVrandom")
+
+
+graphics.off() 
+write.table(Summary, "Summary.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
+
+
+
+#create plot to compare intra-group metrics of variation between normalization methods
+		#for comparison all datasets must have the same length ->remove ISs from raw data, BMIS and RUVrandom)
+		#compute lists with intra-group metrics of variation for each normalization
+			VarStat.raw<-VarStat.raw[-(1:length(IS)-1),]
+			VarStat.BMIS<-VarStat.BMIS[-(1:length(IS)-1),]
+			VarStat.RUVrand<-VarStat.RUVrand[-(1:length(IS)-1),]
+			VarStat.List<-cbind(VarStat.RUVrand,VarStat.NOMIS,VarStat.CCMN,VarStat.BMIS,VarStat.raw)
+		
+		
+		VarData<-list()
+		for (i in 1:(length(VarStat.List)-36))
+		{VarData[[i]]<-cbind(VarStat.List[,i],VarStat.List[,i+9],VarStat.List[,i+18],VarStat.List[,i+27],VarStat.List[,i+36])}
+		
+
+		#compute plot
+		plotnames<-c("CV (QC)","CV (Class1)","CV (Class2)","MAD (QC)","MAD (Class1)","MAD (Class2)","Var (QC)","Var (Class1)","Var (Class2)")
+		normnames<-c("RUVrand","NOMIS","CCMN", "B-MIS","raw data")
+
+		tiff("Comparison_metrics_of_variation.tiff", width=17, height=8.5, units="cm", res=600)
+		par(mfrow=c(3,3),cex.lab=2, oma = c(0,0.2,0.1,0), mar = c(1.5,3.7,1.4,0.4),mgp=c(3,0.2,0),cex=0.4)
+		for (i in 1:length(plotnames))
+		{boxplot(VarData[[i]],main=plotnames[i],notch=TRUE,outline=FALSE, horizontal=TRUE,xaxt="n",yaxt="n")
+		axis(side=1,tck=-0.01,las=1)
+		axis(side=2,tck=0,las=1,labels=normnames, at=(1:length(normnames)))
+		abline(v=median(VarData[[i]][,5]), col="darkred", lwd=1.5)
+		grid(5, ny = FALSE, col = "black", lty = 3, lwd = 0.5)}
+		dev.off()
