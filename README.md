@@ -4,8 +4,8 @@ This code performs various internal standard-based normalization methods (B-MIS,
 #This script was created using RStudio (Version 1.1.383)
 
 #Title: "Selection of Internal Standard based Normalization"
-#Author: "B. Drotleff et al."
-#Date: "May 22th, 2019"
+Author: "B. Drotleff et al."
+Date: "May 22th, 2019"
 
 
 #Following R packages are required to run the script:
@@ -40,6 +40,7 @@ tibble
           k=3
           
           
-An exemplary dataset (dataset.csv) is provided. This dataset was derived from open source data provided in the NormalizeMets R package. For further description see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
+#An exemplary dataset (dataset.csv) is provided. This dataset was derived from open source data provided in the NormalizeMets R package.
+#For further description see: De Livera, Alysha M, M. Aho-Sysi, Laurent Jacob, J. Gagnon-Bartch, Sandra Castillo, J.A. Simp-son, and Terence P. Speed. 2015. Statistical methods for handling unwanted variation in metabolomicsdata.Analytical Chemistry 87 (7). American Chemical Society: 3606-15. (DOI: 10.1021/ac502439y)         
           
 
