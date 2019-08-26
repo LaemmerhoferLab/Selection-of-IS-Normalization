@@ -68,7 +68,7 @@ setwd("raw data")
 		dev.off()
 
 	
-		#compute p-values (Student´s t-test, if Welch´s t-test is anticipated use "var.equal = FALSE")
+		#compute p-values (StudentÂ´s t-test, if WelchÂ´s t-test is anticipated use "var.equal = FALSE")
 		p.val <- matrix(as.character(combn(3,2)),ncol = 3)
 		p.values.raw <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
 		for(i in 2:ncol(data.raw.log))
@@ -259,7 +259,7 @@ setwd("B-MIS")
 				dev.off()
 		
 			
-				#compute p-values (Student´s t-test, if Welch´s t-test is anticipated use "var.equal = FALSE")
+				#compute p-values (StudentÂ´s t-test, if WelchÂ´s t-test is anticipated use "var.equal = FALSE")
 				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
 				p.values.BMIS <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
 				for(i in 2:ncol(data.BMIS.log))
@@ -405,7 +405,7 @@ setwd("CCMN")
 				dev.off()
 		
 			
-				#compute p-values (Student´s t-test, if Welch´s t-test is anticipated use "var.equal = FALSE")
+				#compute p-values (StudentÂ´s t-test, if WelchÂ´s t-test is anticipated use "var.equal = FALSE")
 				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
 				p.values.CCMN <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
 				for(i in 2:ncol(data.CCMN))
@@ -549,7 +549,7 @@ setwd("NOMIS")
 				dev.off()
 		
 			
-				#compute p-values (Student´s t-test, if Welch´s t-test is anticipated use "var.equal = FALSE")
+				#compute p-values (StudentÂ´s t-test, if WelchÂ´s t-test is anticipated use "var.equal = FALSE")
 				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
 				p.values.NOMIS <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
 				for(i in 2:ncol(data.NOMIS))
@@ -690,7 +690,7 @@ setwd("NOMIS")
  				dev.off()
  		
  			
- 				#compute p-values (Student´s t-test, if Welch´s t-test is anticipated use "var.equal = FALSE")
+ 				#compute p-values (StudentÂ´s t-test, if WelchÂ´s t-test is anticipated use "var.equal = FALSE")
  				p.val <- matrix(as.character(combn(3,2)),ncol = 3)
  				p.values.RUVrand <- data.frame(row.names=paste(p.val[1,],"vs",p.val[2,]))
  				for(i in 2:ncol(data.RUVrand))
@@ -808,6 +808,19 @@ setwd("NOMIS")
 graphics.off() 
 write.table(Summary, "Summary.csv", sep = ",", quote = FALSE, append = FALSE, row.names = TRUE, col.names = NA)
 
+
+#Create Venn Diagram for significant features (p-value < 0.05) between raw data, CCMN-normalized and BMIS normalized Data 
+sig.raw<-as.data.frame((p.val.stat.raw$`p-value`)[which(p.val.stat.raw$'p-value'<0.05)])
+rownames(sig.raw)<-rownames(p.val.stat.raw)[which(p.val.stat.raw$'p-value'<0.05)]
+sig.BMIS<-as.data.frame((p.val.stat.BMIS$`p-value`)[which(p.val.stat.BMIS$'p-value'<0.05)])
+rownames(sig.BMIS)<-rownames(p.val.stat.BMIS)[which(p.val.stat.BMIS$'p-value'<0.05)]
+sig.CCMN<-as.data.frame((p.val.stat.CCMN$`p-value`)[which(p.val.stat.CCMN$'p-value'<0.05)])
+rownames(sig.CCMN)<-rownames(p.val.stat.CCMN)[which(p.val.stat.CCMN$'p-value'<0.05)]
+Venn_sig<-list(rownames(sig.raw),rownames(sig.BMIS),rownames(sig.CCMN))
+
+tiff("VennPlot.tiff", width=8, height=8, units="in", res=300)
+VennPlot(Venn_sig, group.labels = c("raw","BMIS","CCMN"))
+dev.off()
 
 
 #create plot to compare intra-group metrics of variation between normalization methods
