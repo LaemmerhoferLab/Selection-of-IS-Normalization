@@ -57,13 +57,13 @@ setwd("raw data")
 	data.raw.log<-LogTransform(data.raw, base=exp(1))$output
 
 		#create across-group RLA plot
-		tiff("RLAPlot_ag_raw.tiff", width=8, height=8, units="in", res=300)
+		tiff("RLAPlot_ag_raw.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 		RlaPlots(data.raw.log, "ag", outline=FALSE, ylim=c(-1,1))
 		dev.off()
 
 
 		#create within-group RLA plot
-		tiff("RLAPlot_wg_raw.tiff", width=8, height=8, units="in", res=300)
+		tiff("RLAPlot_wg_raw.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 		RlaPlots(data.raw.log, "wg", outline=FALSE, ylim=c(-1,1))
 		dev.off()
 
@@ -78,7 +78,7 @@ setwd("raw data")
 	
 		
 		#plot p-value histogram
-		tiff("p-value_histogram_raw.tiff", width=8, height=8, units="in", res=300)
+		tiff("p-value_histogram_raw.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 		hist(matrix(as.numeric(p.values.raw[1,])), main=row.names(p.values.raw[1,]),breaks = 20, xlab = "p-value", las = 1)
 		dev.off()
 
@@ -86,7 +86,7 @@ setwd("raw data")
 		#compute q-values for p-value adjustment (usually only suitable for large datasets)
 		plotfile <- "q-values_raw.tiff"
 		q.values.raw <- qvalue(matrix(as.numeric(p.values.raw[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
-		tiff("q-values_raw.tiff", width=8, height=8, units="in", res=300)
+		tiff("q-values_raw.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 		plot(q.values.raw)
 		dev.off()
 		
@@ -248,13 +248,13 @@ setwd("B-MIS")
 			
 		
 				#create across-group RLA plot
-				tiff("RLAPlot_ag_BMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_ag_BMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.BMIS.log, "ag", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
 		
 				#create within-group RLA plot
-				tiff("RLAPlot_wg_BMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_wg_BMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.BMIS.log, "wg", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
@@ -269,7 +269,7 @@ setwd("B-MIS")
 			
 				
 				#plot p-value histogram
-				tiff("p-value_histogram_BMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("p-value_histogram_BMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				hist(matrix(as.numeric(p.values.BMIS[1,])), main=row.names(p.values.BMIS[1,]),breaks = 20, xlab = "p-value", las = 1)
 				dev.off()
 		
@@ -277,7 +277,7 @@ setwd("B-MIS")
 				#compute q-values for p-value adjustment
 				plotfile <- "q-values_BMIS.tiff"
 				q.values.BMIS <- qvalue(matrix(as.numeric(p.values.BMIS[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
-				tiff("q-values_BMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("q-values_BMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				plot(q.values.BMIS)
 				dev.off()
 				
@@ -394,13 +394,13 @@ setwd("CCMN")
 		#statistical analysis of CCMN normalized dataset
 							
 				#create across-group RLA plot
-				tiff("RLAPlot_ag_CCMN.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_ag_CCMN.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.CCMN, "ag", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
 		
 				#create within-group RLA plot
-				tiff("RLAPlot_wg_CCMN.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_wg_CCMN.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.CCMN, "wg", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
@@ -415,7 +415,7 @@ setwd("CCMN")
 			
 				
 				#plot p-value histogram
-				tiff("p-value_histogram_CCMN.tiff", width=8, height=8, units="in", res=300)
+				tiff("p-value_histogram_CCMN.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				hist(matrix(as.numeric(p.values.CCMN[1,])), main=row.names(p.values.CCMN[1,]),breaks = 20, xlab = "p-value", las = 1)
 				dev.off()
 		
@@ -423,7 +423,7 @@ setwd("CCMN")
 				#compute q-values for p-value adjustment
 				plotfile <- "q-values_CCMN.tiff"
 				q.values.CCMN <- qvalue(matrix(as.numeric(p.values.CCMN[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
-				tiff("q-values_CCMN.tiff", width=8, height=8, units="in", res=300)
+				tiff("q-values_CCMN.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				plot(q.values.CCMN)
 				dev.off()
 				
@@ -538,13 +538,13 @@ setwd("NOMIS")
 		#statistical analysis of NOMIS normalized dataset
 							
 				#create across-group RLA plot
-				tiff("RLAPlot_ag_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_ag_NOMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.NOMIS, "ag", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
 		
 				#create within-group RLA plot
-				tiff("RLAPlot_wg_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("RLAPlot_wg_NOMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				RlaPlots(data.NOMIS, "wg", outline=FALSE, ylim=c(-1,1))
 				dev.off()
 		
@@ -559,7 +559,7 @@ setwd("NOMIS")
 			
 				
 				#plot p-value histogram
-				tiff("p-value_histogram_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("p-value_histogram_NOMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				hist(matrix(as.numeric(p.values.NOMIS[1,])), main=row.names(p.values.NOMIS[1,]),breaks = 20, xlab = "p-value", las = 1)
 				dev.off()
 		
@@ -567,7 +567,7 @@ setwd("NOMIS")
 				#compute q-values for p-value adjustment
 				plotfile <- "q-values_NOMIS.tiff"
 				q.values.NOMIS <- qvalue(matrix(as.numeric(p.values.NOMIS[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
-				tiff("q-values_NOMIS.tiff", width=8, height=8, units="in", res=300)
+				tiff("q-values_NOMIS.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 				plot(q.values.NOMIS)
 				dev.off()
 				
@@ -679,13 +679,13 @@ setwd("NOMIS")
  		#statistical analysis of RUVrand normalized dataset
  							
  				#create across-group RLA plot
- 				tiff("RLAPlot_ag_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				tiff("RLAPlot_ag_RUVrand.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
  				RlaPlots(data.RUVrand, "ag", outline=FALSE, ylim=c(-1,1))
  				dev.off()
  		
  		
  				#create within-group RLA plot
- 				tiff("RLAPlot_wg_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				tiff("RLAPlot_wg_RUVrand.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
  				RlaPlots(data.RUVrand, "wg", outline=FALSE, ylim=c(-1,1))
  				dev.off()
  		
@@ -700,7 +700,7 @@ setwd("NOMIS")
  			
  				
  				#plot p-value histogram
- 				tiff("p-value_histogram_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				tiff("p-value_histogram_RUVrand.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
  				hist(matrix(as.numeric(p.values.RUVrand[1,])), main=row.names(p.values.RUVrand[1,]),breaks = 20, xlab = "p-value", las = 1)
  				dev.off()
  		
@@ -708,7 +708,7 @@ setwd("NOMIS")
  				#compute q-values for p-value adjustment
  				plotfile <- "q-values_RUVrand.tiff"
  				q.values.RUVrand <- qvalue(matrix(as.numeric(p.values.RUVrand[1,])),lambda=seq(0,0.95,0.001), fdr.level = 0.05,pfdr = TRUE)
- 				tiff("q-values_RUVrand.tiff", width=8, height=8, units="in", res=300)
+ 				tiff("q-values_RUVrand.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
  				plot(q.values.RUVrand)
  				dev.off()
  				
@@ -818,7 +818,7 @@ sig.CCMN<-as.data.frame((p.val.stat.CCMN$`p-value`)[which(p.val.stat.CCMN$'p-val
 rownames(sig.CCMN)<-rownames(p.val.stat.CCMN)[which(p.val.stat.CCMN$'p-value'<0.05)]
 Venn_sig<-list(rownames(sig.raw),rownames(sig.BMIS),rownames(sig.CCMN))
 
-tiff("VennPlot.tiff", width=8, height=8, units="in", res=300)
+tiff("VennPlot.tiff", width=8, height=8, units="in", res=300, compression = "lzw")
 VennPlot(Venn_sig, group.labels = c("raw","BMIS","CCMN"))
 dev.off()
 
@@ -841,7 +841,7 @@ dev.off()
 		plotnames<-c("CV (QC)","CV (Class1)","CV (Class2)","MAD (QC)","MAD (Class1)","MAD (Class2)","Var (QC)","Var (Class1)","Var (Class2)")
 		normnames<-c("RUVrand","NOMIS","CCMN", "B-MIS","raw data")
 
-		tiff("Comparison_metrics_of_variation.tiff", width=17, height=8.5, units="cm", res=600)
+		tiff("Comparison_metrics_of_variation.tiff", width=17, height=8.5, units="cm", res=600, compression = "lzw")
 		par(mfrow=c(3,3),cex.lab=2, oma = c(0,0.2,0.1,0), mar = c(1.5,3.7,1.4,0.4),mgp=c(3,0.2,0),cex=0.4)
 		for (i in 1:length(plotnames))
 		{boxplot(VarData[[i]],main=plotnames[i],notch=TRUE,outline=FALSE, horizontal=TRUE,xaxt="n",yaxt="n")
