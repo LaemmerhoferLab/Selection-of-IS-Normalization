@@ -2,7 +2,7 @@
 
 #Title: "Selection of Internal Standard based Normalization"
 #Author: "B. Drotleff et al."
-#Date: "May 22th, 2019"
+#Date: "May 22nd, 2019"
 
 
 #load required packages
