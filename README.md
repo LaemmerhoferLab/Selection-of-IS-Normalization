@@ -22,7 +22,7 @@ tibble
 
 To ensure correct operation, the input data file must fulfill the following requirements:
   - The R-project file must be in the same folder as the input data file
-  - The input data file must be named "dataset.csv" with the file type .csv
+  - The input data file must be named "dataset.csv" (file type .csv)
   - Columns must have headers --> column 1: "Samples", column 2: "Class"
 	- Rows in column 1 must contain individual sample names
   - Rows in column 2 must contain numeric numbers that represent the corresponding class affiliation
