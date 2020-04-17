@@ -20,7 +20,7 @@ ropls
 tibble
 
 
-To ensure correct operation, the input data file must fulfill thefollowing requirements:
+To ensure correct operation, the input data file must fulfill the following requirements:
   - The R-project file must be in the same folder as the input data file
   - The input data file must be named "dataset.csv" with the file type .csv
   - Columns must have headers --> column 1: "Samples", column 2: "Class"
